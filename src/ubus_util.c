@@ -28,7 +28,6 @@ static int list_connected_devices(struct ubus_context *ctx, struct ubus_object *
 		      struct ubus_request_data *req, const char *method,
 		      struct blob_attr *msg)
 {
-    syslog(LOG_DEBUG, "ubus 'get' method was called");
 start:
     while( write_lock ){
         sleep(0.2);
@@ -38,19 +37,27 @@ start:
 	struct blob_buf b2;
     blob_buf_init(&b, 0);
     struct node *tmp = head;
+	void *s;
 	if( write_lock ){
 		read_lock = 0;
 		goto start;
 	}
 	char info[300];
+	void* array = blobmsg_open_nested(&b, "client_info", true);
     while ( tmp )
     {
-		snprintf((char *) info, 299, "address:%s, bytes_reveived:%ld, "
-				"bytes_sent:%ld, connected_since:%s", 
-				tmp->address, tmp->rec_bytes, tmp->sent_bytes, tmp->con_time);
-        blobmsg_add_string(&b, tmp->common_name, info);
+		void* cookie = blobmsg_open_nested( &b, NULL, false );
+		
+		blobmsg_add_string(&b, "name", tmp->common_name);
+		blobmsg_add_string(&b, "address", tmp->address);
+		blobmsg_add_u64(&b, "bytes_received", tmp->rec_bytes);
+		blobmsg_add_u64(&b, "bytes_sent", tmp->sent_bytes);
+		blobmsg_add_string(&b, "conection_time", tmp->con_time);
+
+		blobmsg_close_table ( &b, cookie );
 		tmp = tmp->next;
     }
+	blobmsg_close_array(&b, array);
     ubus_send_reply(ctx, req, b.head);
 	blob_buf_free(&b);
     read_lock = 0;
@@ -61,7 +68,6 @@ static int disconnect_device(struct ubus_context *ctx, struct ubus_object *obj,
 		      struct ubus_request_data *req, const char *method,
 		      struct blob_attr *msg)
 {
-    syslog(LOG_DEBUG, "ubus 'disconnect' method was called");
     struct blob_attr *tb[1];
 	struct blob_buf b = {};
 	
@@ -88,10 +94,14 @@ static void *run_loop()
 }
 
 int ubus_setup(struct ubus_context **ctx, char *server_name, pthread_t **thread_id){
-    uloop_init();
+    int rc = 0;
+	rc = uloop_init();
+	if( rc ){
+		syslog(LOG_ERR, "Failed to initiate uloop: %d", rc);
+	}
     *ctx = ubus_connect(NULL);
 	if (!ctx) {
-		fprintf(stderr, "Failed to connect to ubus\n");
+		syslog(LOG_ERR, "Failed to connect to ubus\n");
 		return -1;
 	}
     ubus_add_uloop(*ctx); 
@@ -104,9 +114,18 @@ int ubus_setup(struct ubus_context **ctx, char *server_name, pthread_t **thread_
         .methods = management_methods,
         .n_methods = ARRAY_SIZE(management_methods),
     };
-	ubus_add_object(*ctx, &management_object);
-    syslog(LOG_DEBUG, "R");
-    pthread_create(*thread_id, NULL, run_loop, NULL);
-    syslog(LOG_DEBUG, "RUN");
+	rc = ubus_add_object(*ctx, &management_object);
+	if( rc ){
+		syslog(LOG_ERR, "Error adding ubus object: %d", rc);
+		return rc;
+	}
+	*thread_id = (int *)malloc(sizeof(int));
+    rc = pthread_create(*thread_id, NULL, run_loop, NULL);
+	if( rc ){
+
+		syslog(LOG_ERR, "Failed to create a new thread: %d", rc);
+		free(*thread_id);
+		return rc;
+	}
     return 0;
 }

@@ -3,7 +3,6 @@
 #include "socket_util.h"
 
 struct node {
-//    char line[256];
     char common_name[30];
     char address[30];
     long rec_bytes;

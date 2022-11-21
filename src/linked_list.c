@@ -13,17 +13,12 @@ struct node* create_node(char *line)
     node->rec_bytes = atol(strtok(NULL, delim));
     node->sent_bytes = atol(strtok(NULL, delim));
     strncpy(node->con_time, strtok(NULL, delim), 30);
-    //strncpy(node->line, line, 255);
-    //node->line[255] = '\0';
-    syslog(LOG_DEBUG, "node -> %s", node->common_name);
     return node;
 }
 
 void add_new_node(char *line)
 {
-    //syslog(LOG_DEBUG, "head222 -> %s", head->line);
     if( !(head) ){
-        syslog(LOG_DEBUG, "L");
         head = create_node(line);
         return;
     }

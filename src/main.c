@@ -52,7 +52,6 @@ static struct argp argp = { options, parse_opt, 0, doc };
 
 static void term_proc(int sigterm) 
 {
-	printf("yes, it does");
 	daemonize = 0;
 }
 
@@ -60,7 +59,7 @@ static void term_proc(int sigterm)
 int main(int argc, char **argv)
 {
 	openlog("openvpn_server_manager", LOG_PID, LOG_USER);
-	syslog(LOG_DEBUG, "is this on?");
+
 	//arguments
 	int rc = 0;
 	struct sigaction action;
@@ -68,7 +67,7 @@ int main(int argc, char **argv)
 	struct ubus_context *ctx;
 	pthread_t *thread_id;
 	struct flock lock, savelock;
-	int fd, print = 0;
+	int fd;
 	//set sigaction
 	memset(&action, 0, sizeof(struct sigaction));
 	action.sa_handler = term_proc;
@@ -90,24 +89,38 @@ int main(int argc, char **argv)
 		}
 	}
 
-    syslog(LOG_INFO, "openvpn_server_manager started successfully");
-	int counter = 0;
-
+   
+	
 	rc = ubus_setup(&ctx, arguments.server_name, &thread_id);
 	if( rc ){
 		goto cleanup_socket;
 	}
-
+	int sent = 0;
+	int counter = 0;
+	syslog(LOG_INFO, "openvpn_server_manager started successfully");
 	while( daemonize ) {
-		syslog(LOG_DEBUG, "WOW");
-		send(sockfd, "status\n", sizeof("status\n"), 0);
+		sent = send(sockfd, "status\n", sizeof("status\n"), 0);
+		if( sent == -1 ){
+			syslog(LOG_ERR, "Failed to send data to management socket");
+			counter++;
+			if( counter > 5 ){
+				daemonize = 0;
+				continue;
+			}
+			sleep(10);
+			management_setup(&sockfd, arguments.port);
+			continue;
+		}
+		else{
+			counter = 0;
+		}
 		read_client_list(sockfd);
-
-		sleep(20);
+		sleep(10);
 		
 	}
 	if(*thread_id){
 		pthread_cancel(*thread_id);
+		free(thread_id);
 	}
 	free_all_nodes();
 	ubus_free(ctx);
