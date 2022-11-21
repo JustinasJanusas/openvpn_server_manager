@@ -9,7 +9,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/openvpn_server_manager
 	CATEGORY:=Base system
 	TITLE:=openvpn_server_manager
-	DEPENDS:= +libubus
+	DEPENDS:= +libubus +libubox
 endef
 
 define Package/openvpn_server_manager/description

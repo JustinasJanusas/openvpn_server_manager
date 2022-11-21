@@ -119,7 +119,7 @@ int ubus_setup(struct ubus_context **ctx, char *server_name, pthread_t **thread_
 		syslog(LOG_ERR, "Error adding ubus object: %d", rc);
 		return rc;
 	}
-	*thread_id = (int *)malloc(sizeof(int));
+	*thread_id = (pthread_t *)malloc(sizeof(pthread_t));
     rc = pthread_create(*thread_id, NULL, run_loop, NULL);
 	if( rc ){
 

@@ -31,14 +31,8 @@ start_service() {
         config_get enabled general 'enable' '0'
 		
 		if [ "$enabled" -eq 1 ]; then
-			# config_get port 'general' 'port'
-			# config_get server_name 'general' 'server_name'
-			# procd_open_instance
-			# procd_set_param command /usr/bin/openvpn_server_manager -p "$port" -n "$server_name"
-			# procd_set_param file /etc/config/openvpn_server_manager
-			# procd_close_instance
+
 			config_load 'openvpn'
-			
 			config_foreach start_manager 'openvpn' 
 
 		fi

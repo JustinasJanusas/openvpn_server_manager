@@ -1,5 +1,5 @@
 BIN:=openvpn_server_manager
-LIBS:= -largp -lubus -lubox -ggdb3
+LIBS:= -largp -lubus -lubox
 
 .PHONY: all clean
 
