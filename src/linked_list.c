@@ -8,11 +8,19 @@ struct node* create_node(char *line)
     char *delim = ",";
     node = (struct node*) malloc(sizeof(struct node));
     node->next = NULL;
-    strncpy(node->common_name, strtok(line, delim), 30);
-    strncpy(node->address, strtok(NULL, delim), 30);
-    node->rec_bytes = atol(strtok(NULL, delim));
-    node->sent_bytes = atol(strtok(NULL, delim));
-    strncpy(node->con_time, strtok(NULL, delim), 30);
+    char *name = strtok(line, delim);
+    char *address = strtok(NULL, delim);
+    char *rec_bytes = strtok(NULL, delim);
+    char *sent_bytes = strtok(NULL, delim);
+    char *con_time = strtok(NULL, delim);
+    if( !name || !address || !rec_bytes || !sent_bytes || !con_time ){
+        return NULL;
+    }
+    strncpy(node->common_name, name, 30);
+    strncpy(node->address, address, 30);
+    node->rec_bytes = atol(rec_bytes);
+    node->sent_bytes = atol(sent_bytes);
+    strncpy(node->con_time, con_time, 30);
     return node;
 }
 

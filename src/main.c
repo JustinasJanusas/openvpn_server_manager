@@ -5,7 +5,7 @@
 #include <fcntl.h>
 
 
-#include "string_util.h"
+#include "ubus_util.h"
 
 
 
@@ -55,45 +55,80 @@ static void term_proc(int sigterm)
 	daemonize = 0;
 }
 
-
-int main(int argc, char **argv)
+int init(pthread_t **thread_id, struct ubus_context **ctx, struct argp *argp, 
+		int argc, char **argv, struct arguments *arguments)
 {
-	openlog("openvpn_server_manager", LOG_PID, LOG_USER);
-
-	//arguments
 	int rc = 0;
 	struct sigaction action;
-	struct arguments arguments;
-	struct ubus_context *ctx;
-	pthread_t *thread_id;
 	struct flock lock, savelock;
-	int fd;
+	
 	//set sigaction
 	memset(&action, 0, sizeof(struct sigaction));
 	action.sa_handler = term_proc;
 	sigaction(SIGTERM, &action, NULL);
 	sigaction(SIGINT, &action, NULL);
-
 	//parse args
-	rc = argp_parse(&argp, argc, argv, 0, 0, &arguments);
-	
+	argp_parse(argp, argc, argv, 0, 0, arguments);
 	//socket
-	rc = management_setup(&sockfd, arguments.port);
+	rc = management_setup(&sockfd, arguments->port);
 	if( rc ){
 		syslog(LOG_ERR, "Failed to setup management socket: %d", rc);
-		if( sockfd < 0 ){
-			goto cleanup_final;
-		}
-		else{
-			goto cleanup_socket;
-		}
+		return rc;
 	}
-
-   
-	
-	rc = ubus_setup(&ctx, arguments.server_name, &thread_id);
+	rc = ubus_setup(ctx, arguments->server_name);
 	if( rc ){
-		goto cleanup_socket;
+		return rc;
+	}
+	rc = create_ubus_thread(thread_id);
+	if( rc ){
+		return 4;
+	} 
+	return rc;
+}
+
+void cleanup(pthread_t **thread_id, struct ubus_context **ctx, int err)
+{
+	switch (err)
+	{
+		case 0:
+			break;
+		case 1:
+			goto cleanup_final;
+		case 2:
+			goto cleanup_socket;
+		case 3:
+			goto cleanup_uloop;
+		case 4:
+			goto cleanup_ubus;
+		default:
+			break;
+	}
+	if(*thread_id){
+		pthread_cancel(**thread_id);
+		free(*thread_id);
+	}
+	free_all_nodes();
+	cleanup_ubus:
+		ubus_free(*ctx);
+	cleanup_uloop:
+		uloop_done();
+	cleanup_socket:
+		close(sockfd);
+	cleanup_final:
+		syslog(LOG_INFO, "openvpn_server_manager was stopped");
+		closelog();
+}
+
+int main(int argc, char **argv)
+{
+	openlog("openvpn_server_manager", LOG_PID, LOG_USER);
+	int rc = 0;
+	pthread_t *thread_id;
+	struct ubus_context *ctx;
+	struct arguments arguments;
+	rc = init(&thread_id, &ctx, &argp, argc, argv, &arguments);
+	if( rc ){
+		goto cleanup;
 	}
 	int sent = 0;
 	int counter = 0;
@@ -118,18 +153,9 @@ int main(int argc, char **argv)
 		sleep(10);
 		
 	}
-	if(*thread_id){
-		pthread_cancel(*thread_id);
-		free(thread_id);
-	}
-	free_all_nodes();
-	ubus_free(ctx);
-	uloop_done();
-	cleanup_socket:
-		close(sockfd);
-	cleanup_final:
-		syslog(LOG_INFO, "openvpn_server_manager was stopped");
-		close(fd);
-		closelog();
-		return rc;
+	int lastrc = rc;
+	rc = 0;
+	cleanup:
+		cleanup(&thread_id, &ctx, rc);
+		return lastrc;
 }

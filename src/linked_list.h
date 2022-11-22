@@ -1,6 +1,11 @@
+#include <syslog.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#include <string.h>
 #include <stdlib.h>
 
-#include "socket_util.h"
+
 
 struct node {
     char common_name[30];

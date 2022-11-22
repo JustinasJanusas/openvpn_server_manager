@@ -1,16 +1,16 @@
 #include "ubus_util.h"
 
 
-static int list_connected_devices(struct ubus_context *ctx, struct ubus_object *obj,
-		      struct ubus_request_data *req, const char *method,
-		      struct blob_attr *msg);
+static int list_connected_devices(struct ubus_context *ctx, 
+			struct ubus_object *obj, struct ubus_request_data *req, 
+			const char *method, struct blob_attr *msg);
 
 static int disconnect_device(struct ubus_context *ctx, struct ubus_object *obj,
 		      struct ubus_request_data *req, const char *method,
 		      struct blob_attr *msg);
 
 static const struct blobmsg_policy disconnect_policy[] = {
-	[0] = { .name = "address", .type = BLOBMSG_TYPE_STRING },
+	[0] = { .name = "common_name", .type = BLOBMSG_TYPE_STRING },
 };
 
 static const struct ubus_method management_methods[] = {
@@ -24,11 +24,10 @@ static struct ubus_object_type management_object_type;
 static struct ubus_object management_object;
 
 
-static int list_connected_devices(struct ubus_context *ctx, struct ubus_object *obj,
-		      struct ubus_request_data *req, const char *method,
-		      struct blob_attr *msg)
+static int list_connected_devices(struct ubus_context *ctx, 
+			struct ubus_object *obj, struct ubus_request_data *req, 
+			const char *method, struct blob_attr *msg)
 {
-start:
     while( write_lock ){
         sleep(0.2);
     }
@@ -38,9 +37,8 @@ start:
     blob_buf_init(&b, 0);
     struct node *tmp = head;
 	void *s;
-	if( write_lock ){
-		read_lock = 0;
-		goto start;
+	while( write_lock ){
+		sleep(0.2);
 	}
 	char info[300];
 	void* array = blobmsg_open_nested(&b, "client_info", true);
@@ -88,26 +86,29 @@ static int disconnect_device(struct ubus_context *ctx, struct ubus_object *obj,
 	blob_buf_free(&b);
 	return 0;
 }
-static void *run_loop()
-{
-    uloop_run();
-}
 
-int ubus_setup(struct ubus_context **ctx, char *server_name, pthread_t **thread_id){
+// static void *run_loop()
+// {
+//     uloop_run();
+// }
+
+int ubus_setup(struct ubus_context **ctx, char *server_name){
     int rc = 0;
 	rc = uloop_init();
 	if( rc ){
 		syslog(LOG_ERR, "Failed to initiate uloop: %d", rc);
+		return 2;
 	}
     *ctx = ubus_connect(NULL);
 	if (!ctx) {
 		syslog(LOG_ERR, "Failed to connect to ubus\n");
-		return -1;
+		return 3;
 	}
     ubus_add_uloop(*ctx); 
 	char ubus_name[40] = "openvpn.";
 	strncat(ubus_name, server_name, 30);
-    management_object_type = (struct ubus_object_type)UBUS_OBJECT_TYPE(ubus_name , management_methods);
+    management_object_type = (struct ubus_object_type)
+							UBUS_OBJECT_TYPE(ubus_name , management_methods);
     management_object = (struct ubus_object){
         .name = ubus_name,
         .type = &management_object_type,
@@ -117,15 +118,20 @@ int ubus_setup(struct ubus_context **ctx, char *server_name, pthread_t **thread_
 	rc = ubus_add_object(*ctx, &management_object);
 	if( rc ){
 		syslog(LOG_ERR, "Error adding ubus object: %d", rc);
-		return rc;
+		return 4;
 	}
-	*thread_id = (pthread_t *)malloc(sizeof(pthread_t));
-    rc = pthread_create(*thread_id, NULL, run_loop, NULL);
-	if( rc ){
+    return 0;
+}
 
+int create_ubus_thread(pthread_t **thread_id)
+{
+	int rc = 0;
+	*thread_id = (pthread_t *)malloc(sizeof(pthread_t));
+    rc = pthread_create(*thread_id, NULL,(void *) uloop_run, NULL);
+	if( rc ){
 		syslog(LOG_ERR, "Failed to create a new thread: %d", rc);
 		free(*thread_id);
 		return rc;
 	}
-    return 0;
+	return rc;
 }
