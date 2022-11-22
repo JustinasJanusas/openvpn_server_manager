@@ -87,10 +87,6 @@ static int disconnect_device(struct ubus_context *ctx, struct ubus_object *obj,
 	return 0;
 }
 
-// static void *run_loop()
-// {
-//     uloop_run();
-// }
 
 int ubus_setup(struct ubus_context **ctx, char *server_name){
     int rc = 0;
