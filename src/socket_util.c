@@ -43,8 +43,9 @@ int read_client_list( int sockfd )
     free_all_nodes();
     while( keep_looking ){
         
-        char_count = recv(sockfd, buffer, 99, 0);
+        char_count = recv(sockfd, buffer, 1023, 0);
         buffer[char_count] = '\0';
+        // sprintf(buffer, "%s%s", last_line, buffer);
         strcpy(big_buffer, last_line);
         strcat(big_buffer, buffer);
         if( char_count > 0 ){
