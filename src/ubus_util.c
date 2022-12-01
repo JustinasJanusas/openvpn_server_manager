@@ -59,6 +59,7 @@ static int list_connected_devices(struct ubus_context *ctx,
     ubus_send_reply(ctx, req, b.head);
 	blob_buf_free(&b);
     read_lock = 0;
+	uloop_done();
     return 0;
 }
 
@@ -87,20 +88,20 @@ static int disconnect_device(struct ubus_context *ctx, struct ubus_object *obj,
 	return 0;
 }
 
-
-int ubus_setup(struct ubus_context **ctx, char *server_name){
+struct ubus_context *ctx;
+int ubus_setup(char *server_name){
     int rc = 0;
 	rc = uloop_init();
 	if( rc ){
 		syslog(LOG_ERR, "Failed to initiate uloop: %d", rc);
 		return 2;
 	}
-    *ctx = ubus_connect(NULL);
+    ctx = ubus_connect(NULL);
 	if (!ctx) {
 		syslog(LOG_ERR, "Failed to connect to ubus\n");
 		return 3;
 	}
-    ubus_add_uloop(*ctx); 
+    ubus_add_uloop(ctx); 
 	char ubus_name[40] = "openvpn.";
 	strncat(ubus_name, server_name, 30);
     management_object_type = (struct ubus_object_type)
@@ -111,7 +112,7 @@ int ubus_setup(struct ubus_context **ctx, char *server_name){
         .methods = management_methods,
         .n_methods = ARRAY_SIZE(management_methods),
     };
-	rc = ubus_add_object(*ctx, &management_object);
+	rc = ubus_add_object(ctx, &management_object);
 	if( rc ){
 		syslog(LOG_ERR, "Error adding ubus object: %d", rc);
 		return 4;
@@ -119,11 +120,36 @@ int ubus_setup(struct ubus_context **ctx, char *server_name){
     return 0;
 }
 
-int create_ubus_thread(pthread_t **thread_id)
+
+static void *run_thread(char *server_name)
+{
+	int rc = 0;
+	rc = ubus_setup(server_name);
+	if( rc ){
+		switch (rc)
+		{
+		case 3:
+			goto thread_cleanup_uloop;
+		case 4:
+			goto thread_cleanup_ubus;
+		default:
+			goto thread_cleanup;
+		}
+	}
+	uloop_run();
+	thread_cleanup_ubus:
+		ubus_free(ctx);
+	thread_cleanup_uloop:
+		uloop_done();
+	thread_cleanup:
+		pthread_exit(0);
+}
+
+int create_ubus_thread(pthread_t **thread_id, char *server_name)
 {
 	int rc = 0;
 	*thread_id = (pthread_t *)malloc(sizeof(pthread_t));
-    rc = pthread_create(*thread_id, NULL,(void *) uloop_run, NULL);
+    rc = pthread_create(*thread_id, NULL, run_thread, server_name);
 	if( rc ){
 		syslog(LOG_ERR, "Failed to create a new thread: %d", rc);
 		free(*thread_id);

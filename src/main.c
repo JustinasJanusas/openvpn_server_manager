@@ -1,7 +1,6 @@
 #include <signal.h>
 #include <stdio.h>
 #include <argp.h>
-#include <unistd.h>
 #include <fcntl.h>
 
 
@@ -53,14 +52,15 @@ static struct argp argp = { options, parse_opt, 0, doc };
 static void term_proc(int sigterm) 
 {
 	daemonize = 0;
+	uloop_end();
+	syslog(LOG_DEBUG, "hand %s", pthread_self());
 }
 
-int init(pthread_t **thread_id, struct ubus_context **ctx, struct argp *argp, 
+int init(pthread_t **thread_id, struct argp *argp, 
 		int argc, char **argv, struct arguments *arguments)
 {
 	int rc = 0;
 	struct sigaction action;
-	struct flock lock, savelock;
 	
 	//set sigaction
 	memset(&action, 0, sizeof(struct sigaction));
@@ -75,18 +75,14 @@ int init(pthread_t **thread_id, struct ubus_context **ctx, struct argp *argp,
 		syslog(LOG_ERR, "Failed to setup management socket: %d", rc);
 		return rc;
 	}
-	rc = ubus_setup(ctx, arguments->server_name);
+	rc = create_ubus_thread(thread_id, arguments->server_name);
 	if( rc ){
-		return rc;
-	}
-	rc = create_ubus_thread(thread_id);
-	if( rc ){
-		return 4;
+		return 2;
 	} 
 	return rc;
 }
 
-void cleanup(pthread_t **thread_id, struct ubus_context **ctx, int err)
+void cleanup(pthread_t **thread_id, int err)
 {
 	switch (err)
 	{
@@ -96,22 +92,20 @@ void cleanup(pthread_t **thread_id, struct ubus_context **ctx, int err)
 			goto cleanup_final;
 		case 2:
 			goto cleanup_socket;
-		case 3:
-			goto cleanup_uloop;
-		case 4:
-			goto cleanup_ubus;
 		default:
 			break;
 	}
 	if(*thread_id){
-		pthread_cancel(**thread_id);
+		syslog(LOG_DEBUG, "killer");
+		pthread_kill(**thread_id, SIGTERM);
+		pthread_join(**thread_id, NULL);
+		//sleep(2);
 		free(*thread_id);
 	}
+	else{
+		syslog(LOG_DEBUG, "notkill");
+	}
 	free_all_nodes();
-	cleanup_ubus:
-		ubus_free(*ctx);
-	cleanup_uloop:
-		uloop_done();
 	cleanup_socket:
 		close(sockfd);
 	cleanup_final:
@@ -124,9 +118,9 @@ int main(int argc, char **argv)
 	openlog("openvpn_server_manager", LOG_PID, LOG_USER);
 	int rc = 0;
 	pthread_t *thread_id;
-	struct ubus_context *ctx;
+	
 	struct arguments arguments;
-	rc = init(&thread_id, &ctx, &argp, argc, argv, &arguments);
+	rc = init(&thread_id, &argp, argc, argv, &arguments);
 	if( rc ){
 		goto cleanup;
 	}
@@ -156,6 +150,6 @@ int main(int argc, char **argv)
 	int lastrc = rc;
 	rc = 0;
 	cleanup:
-		cleanup(&thread_id, &ctx, rc);
+		cleanup(&thread_id, rc);
 		return lastrc;
 }
